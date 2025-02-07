@@ -54,6 +54,5 @@ if __name__ == '__main__':
     save_video(frames, processed_video_path, fps=fps)
     save_video(depths, depth_vis_path, fps=fps, is_depths=True)
 
-    
-
-
+    max_vram_mb = int(torch.cuda.max_memory_allocated(DEVICE) / (1024 * 1024))
+    print(f"GPU Max Memory Allocated {max_vram_mb}MB")
