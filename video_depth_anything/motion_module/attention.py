@@ -61,8 +61,8 @@ class CrossAttention(nn.Module):
         self.upcast_attention = upcast_attention
         self.upcast_softmax = upcast_softmax
         self.upcast_efficient_attention = False
-
         self.scale = dim_head**-0.5
+        self.has_sdpa = hasattr(F, "scaled_dot_product_attention")
 
         self.heads = heads
         # for slice_size > 0 the attention score computation
@@ -180,35 +180,44 @@ class CrossAttention(nn.Module):
         return hidden_states
 
     def _attention(self, query, key, value, attention_mask=None):
-        if self.upcast_attention:
-            query = query.float()
-            key = key.float()
+        if self.has_sdpa:
+            # NOTE: upcast_attention is not used
+            hidden_states = F.scaled_dot_product_attention(
+                query, key, value,
+                dropout_p=0.,
+                scale=self.scale)
+            hidden_states = self.reshape_batch_dim_to_heads(hidden_states)
+            return hidden_states
+        else:
+            if self.upcast_attention:
+                query = query.float()
+                key = key.float()
 
-        attention_scores = torch.baddbmm(
-            torch.empty(query.shape[0], query.shape[1], key.shape[1], dtype=query.dtype, device=query.device),
-            query,
-            key.transpose(-1, -2),
-            beta=0,
-            alpha=self.scale,
-        )
+            attention_scores = torch.baddbmm(
+                torch.empty(query.shape[0], query.shape[1], key.shape[1], dtype=query.dtype, device=query.device),
+                query,
+                key.transpose(-1, -2),
+                beta=0,
+                alpha=self.scale,
+            )
 
-        if attention_mask is not None:
-            attention_scores = attention_scores + attention_mask
+            if attention_mask is not None:
+                attention_scores = attention_scores + attention_mask
 
-        if self.upcast_softmax:
-            attention_scores = attention_scores.float()
+            if self.upcast_softmax:
+                attention_scores = attention_scores.float()
 
-        attention_probs = attention_scores.softmax(dim=-1)
+            attention_probs = attention_scores.softmax(dim=-1)
 
-        # cast back to the original dtype
-        attention_probs = attention_probs.to(value.dtype)
+            # cast back to the original dtype
+            attention_probs = attention_probs.to(value.dtype)
 
-        # compute attention output
-        hidden_states = torch.bmm(attention_probs, value)
+            # compute attention output
+            hidden_states = torch.bmm(attention_probs, value)
 
-        # reshape hidden_states
-        hidden_states = self.reshape_batch_dim_to_heads(hidden_states)
-        return hidden_states
+            # reshape hidden_states
+            hidden_states = self.reshape_batch_dim_to_heads(hidden_states)
+            return hidden_states
 
     def _sliced_attention(self, query, key, value, sequence_length, dim, attention_mask):
         batch_size_attention = query.shape[0]
