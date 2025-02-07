@@ -7,7 +7,7 @@ pillow
 imageio
 imageio-ffmpeg
 decord
-xformers
+# xformers
 einops
 easydict
 tqdm

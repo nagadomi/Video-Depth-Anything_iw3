@@ -23,7 +23,7 @@ try:
 
     XFORMERS_AVAILABLE = True
 except ImportError:
-    print("xFormers not available")
+    # print("xFormers not available")
     XFORMERS_AVAILABLE = False
 
 
@@ -185,7 +185,7 @@ class CrossAttention(nn.Module):
             hidden_states = F.scaled_dot_product_attention(
                 query, key, value,
                 dropout_p=0.,
-                scale=self.scale)
+                scale=self.scale, attn_mask=attention_mask)
             hidden_states = self.reshape_batch_dim_to_heads(hidden_states)
             return hidden_states
         else:

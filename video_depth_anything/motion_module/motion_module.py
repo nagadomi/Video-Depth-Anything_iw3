@@ -18,7 +18,7 @@ try:
 
     XFORMERS_AVAILABLE = True
 except ImportError:
-    print("xFormers not available")
+    # print("xFormers not available")
     XFORMERS_AVAILABLE = False
 
 
