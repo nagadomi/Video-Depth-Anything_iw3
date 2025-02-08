@@ -114,13 +114,6 @@ class VideoDepthAnything(nn.Module):
         depth = F.relu(depth)
         return depth.squeeze(1).unflatten(0, (B, T)) # return shape [B, T, H, W]
 
-    def chunked_forward(self, x, chunk=8):
-        x_shape = x.shape # BTCHW
-        features = []
-        for xx in x.chunk(chunk, dim=1):
-            features.append(self.forward_features(xx.flatten(0, 1)))
-        print(len(features), len(features[0]))
-    
     def infer_video_depth(self, frames, target_fps, input_size=518, device='cuda', use_amp=True):
         frame_height, frame_width = frames[0].shape[:2]
         ratio = max(frame_height, frame_width) / min(frame_height, frame_width)
