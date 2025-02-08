@@ -182,7 +182,7 @@ class DinoVisionTransformer(nn.Module):
         N = self.pos_embed.shape[1] - 1
         if npatch == N and w == h:
             return self.pos_embed
-        pos_embed = self.pos_embed.float()
+        pos_embed = self.pos_embed.to(x.dtype)
         class_pos_embed = pos_embed[:, 0]
         patch_pos_embed = pos_embed[:, 1:]
         dim = x.shape[-1]
@@ -203,7 +203,6 @@ class DinoVisionTransformer(nn.Module):
             mode="bicubic",
             antialias=self.interpolate_antialias
         )
-        
         assert int(w0) == patch_pos_embed.shape[-2]
         assert int(h0) == patch_pos_embed.shape[-1]
         patch_pos_embed = patch_pos_embed.permute(0, 2, 3, 1).view(1, -1, dim)
@@ -215,9 +214,8 @@ class DinoVisionTransformer(nn.Module):
         if masks is not None:
             x = torch.where(masks.unsqueeze(-1), self.mask_token.to(x.dtype).unsqueeze(0), x)
 
-        x = torch.cat((self.cls_token.expand(x.shape[0], -1, -1), x), dim=1)
+        x = torch.cat((self.cls_token.expand(x.shape[0], -1, -1).to(x.dtype), x), dim=1)
         x = x + self.interpolate_pos_encoding(x, w, h)
-
         if self.register_tokens is not None:
             x = torch.cat(
                 (
@@ -278,6 +276,7 @@ class DinoVisionTransformer(nn.Module):
             if i in blocks_to_take:
                 output.append(x)
         assert len(output) == len(blocks_to_take), f"only {len(output)} / {len(blocks_to_take)} blocks found"
+
         return output
 
     def _get_intermediate_layers_chunked(self, x, n=1):
@@ -307,7 +306,7 @@ class DinoVisionTransformer(nn.Module):
         else:
             outputs = self._get_intermediate_layers_not_chunked(x, n)
         if norm:
-            outputs = [self.norm(out) for out in outputs]
+            outputs = [self.norm(out).to(out.dtype) for out in outputs]
         class_tokens = [out[:, 0] for out in outputs]
         outputs = [out[:, 1 + self.num_register_tokens:] for out in outputs]
         if reshape:

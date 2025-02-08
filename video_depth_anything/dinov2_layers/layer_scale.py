@@ -25,4 +25,4 @@ class LayerScale(nn.Module):
         self.gamma = nn.Parameter(init_values * torch.ones(dim))
 
     def forward(self, x: Tensor) -> Tensor:
-        return x.mul_(self.gamma) if self.inplace else x * self.gamma
+        return x.mul_(self.gamma.to(x.dtype)) if self.inplace else x * self.gamma.to(x.dtype)

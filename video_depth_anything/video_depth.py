@@ -32,6 +32,23 @@ OVERLAP = 10
 KEYFRAMES = [0,12,24,25,26,27,28,29,30,31]
 INTERP_LEN = 8
 
+
+def _expand_tensor_info(x, ret=[]):
+    if isinstance(x, (list, tuple)):
+        for xx in x:
+            ret += _expand_tensor_info(xx, ret)
+    else:
+        ret.append((x.dtype, x.shape))
+
+    return ret
+
+
+def _show_vram(device, name=""):
+    max_vram_mb = int(torch.cuda.max_memory_allocated(device) / (1024 * 1024))
+    vram_mb = int(torch.cuda.memory_allocated(device) / (1024 * 1024))
+    print(f"[{name}] VRAM Max: {max_vram_mb}MB, Usage: {vram_mb}MB")
+
+
 class VideoDepthAnything(nn.Module):
     def __init__(
         self,
@@ -58,13 +75,23 @@ class VideoDepthAnything(nn.Module):
     def forward(self, x):
         B, T, C, H, W = x.shape
         patch_h, patch_w = H // 14, W // 14
-        features = self.pretrained.get_intermediate_layers(x.flatten(0,1), self.intermediate_layer_idx[self.encoder], return_class_token=True)
-        depth = self.head(features, patch_h, patch_w, T)
-        depth = F.interpolate(depth, size=(H, W), mode="bilinear", align_corners=True)
+        features = self.pretrained.get_intermediate_layers(x.flatten(0, 1), self.intermediate_layer_idx[self.encoder], return_class_token=True)
+        # print(_expand_tensor_info(features)) # fp16
+        # _show_vram(x.device, "get_intermediate_layers")
+        depth = self.head(features, patch_h, patch_w, T) # fp16
+        # _show_vram(x.device, "head")
+        depth = F.interpolate(depth, size=(H, W), mode="bilinear", align_corners=True).to(depth.dtype) # fp32->fp16
         depth = F.relu(depth)
         return depth.squeeze(1).unflatten(0, (B, T)) # return shape [B, T, H, W]
+
+    def chunked_forward(self, x, chunk=8):
+        x_shape = x.shape # BTCHW
+        features = []
+        for xx in x.chunk(chunk, dim=1):
+            features.append(self.forward_features(xx.flatten(0, 1)))
+        print(len(features), len(features[0]))
     
-    def infer_video_depth(self, frames, target_fps, input_size=518, device='cuda'):
+    def infer_video_depth(self, frames, target_fps, input_size=518, device='cuda', use_amp=True):
         frame_height, frame_width = frames[0].shape[:2]
         ratio = max(frame_height, frame_width) / min(frame_height, frame_width)
         if ratio > 1.78:  # we recommend to process video with ratio smaller than 16:9 due to memory limitation
@@ -93,7 +120,7 @@ class VideoDepthAnything(nn.Module):
         
         depth_list = []
         pre_input = None
-        for frame_id in tqdm(range(0, org_video_len, frame_step)):
+        for frame_id in tqdm(range(0, org_video_len, frame_step), ncols=80):
             cur_list = []
             for i in range(INFER_LEN):
                 cur_list.append(torch.from_numpy(transform({'image': frame_list[frame_id+i].astype(np.float32) / 255.0})['image']).unsqueeze(0).unsqueeze(0))
@@ -101,13 +128,17 @@ class VideoDepthAnything(nn.Module):
             if pre_input is not None:
                 cur_input[:, :OVERLAP, ...] = pre_input[:, KEYFRAMES, ...]
 
-            with torch.no_grad():
-                depth = self.forward(cur_input) # depth shape: [1, T, H, W]
+            if cur_input.device.type == "cuda":
+                with torch.no_grad(), torch.autocast(device_type=cur_input.device.type, enabled=use_amp):
+                    depth = self.forward(cur_input) # depth shape: [1, T, H, W] # fp16
+            else:
+                with torch.no_grad():
+                    depth = self.forward(cur_input) # depth shape: [1, T, H, W]
 
             depth = F.interpolate(depth.flatten(0,1).unsqueeze(1), size=(frame_height, frame_width), mode='bilinear', align_corners=True)
-            depth_list += [depth[i][0].cpu().numpy() for i in range(depth.shape[0])]
-
-            pre_input = cur_input
+            depth = depth.cpu().float().numpy()
+            depth_list += [depth[i][0] for i in range(depth.shape[0])]
+            pre_input = cur_input # cur_input.cpu() can reduce 200MB VRAM but it is small size and little slow
 
         del frame_list
         gc.collect()
@@ -151,4 +182,3 @@ class VideoDepthAnything(nn.Module):
         depth_list = depth_list_aligned
             
         return np.stack(depth_list[:org_video_len], axis=0), target_fps
-        
