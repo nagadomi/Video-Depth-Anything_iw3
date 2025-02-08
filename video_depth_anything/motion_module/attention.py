@@ -62,7 +62,9 @@ class CrossAttention(nn.Module):
         self.upcast_softmax = upcast_softmax
         self.upcast_efficient_attention = False
         self.scale = dim_head**-0.5
-        self.has_sdpa = hasattr(F, "scaled_dot_product_attention")
+
+        # NOTE: original code is faster and uses less VRAM, so set this to False.
+        self.use_sdpa = False # hasattr(F, "scaled_dot_product_attention")
 
         self.heads = heads
         # for slice_size > 0 the attention score computation
@@ -180,7 +182,7 @@ class CrossAttention(nn.Module):
         return hidden_states
 
     def _attention(self, query, key, value, attention_mask=None):
-        if self.has_sdpa:
+        if self.use_sdpa:
             # NOTE: upcast_attention is not used
             hidden_states = F.scaled_dot_product_attention(
                 query, key, value,
