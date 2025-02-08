@@ -72,10 +72,40 @@ class VideoDepthAnything(nn.Module):
 
         self.head = DPTHeadTemporal(self.pretrained.embed_dim, features, use_bn, out_channels=out_channels, use_clstoken=use_clstoken, num_frames=num_frames, pe=pe)
 
+    def _split_get_intermediate_layers(self, split_size, x, idx, return_class_token):
+        if x.shape[0] <= split_size:
+            return self.pretrained.get_intermediate_layers(
+                x,
+                self.intermediate_layer_idx[self.encoder],
+                return_class_token=True)
+        else:
+            assert x.shape[0] % split_size == 0
+            ret1 = []
+            for i in range(0, x.shape[0], split_size):
+                ret1.append(
+                    self.pretrained.get_intermediate_layers(
+                        x[i:i+split_size],
+                        self.intermediate_layer_idx[self.encoder],
+                        return_class_token=True)
+                )
+            ret2 = []
+            for j in range(len(self.intermediate_layer_idx[self.encoder])):
+                ret2.append((
+                    torch.cat([ret1[i][j][0] for i in range(len(ret1))], dim=0),
+                    torch.cat([ret1[i][j][1] for i in range(len(ret1))], dim=0), # Expect return_class_token=True
+                ))
+            return ret2
+
     def forward(self, x):
         B, T, C, H, W = x.shape
         patch_h, patch_w = H // 14, W // 14
-        features = self.pretrained.get_intermediate_layers(x.flatten(0, 1), self.intermediate_layer_idx[self.encoder], return_class_token=True)
+
+        if True:
+            features = self.pretrained.get_intermediate_layers(x.flatten(0, 1), self.intermediate_layer_idx[self.encoder], return_class_token=True)
+        else:
+            # NOTE: This split may be unnecessary since there is bigger VRAM usage than this in later processings.
+            features = self._split_get_intermediate_layers(4, x.flatten(0, 1), self.intermediate_layer_idx[self.encoder], return_class_token=True)
+
         # print(_expand_tensor_info(features)) # fp16
         # _show_vram(x.device, "get_intermediate_layers")
         depth = self.head(features, patch_h, patch_w, T) # fp16

@@ -19,6 +19,12 @@ from .motion_module.motion_module import TemporalModule
 from easydict import EasyDict
 
 
+def _show_vram(device, name=""):
+    max_vram_mb = int(torch.cuda.max_memory_allocated(device) / (1024 * 1024))
+    vram_mb = int(torch.cuda.memory_allocated(device) / (1024 * 1024))
+    print(f"[{name}] VRAM Max: {max_vram_mb}MB, Usage: {vram_mb}MB")
+
+
 class DPTHeadTemporal(DPTHead):
     def __init__(self, 
         in_channels, 
@@ -50,7 +56,22 @@ class DPTHeadTemporal(DPTHead):
                            **motion_module_kwargs)
         ])
 
-    def forward(self, out_features, patch_h, patch_w, frame_length):
+    def _split_forward_last(self, split_size, layer_1_rn, layer_2_rn, path_3, patch_h, patch_w):
+        assert layer_1_rn.shape[0] > split_size and layer_1_rn.shape[0] % split_size == 0
+        ret = []
+        for i in range(0, layer_1_rn.shape[0], split_size):
+            path_2 = self.scratch.refinenet2(path_3[i:i+split_size], layer_2_rn[i:i+split_size], size=layer_1_rn[i:i+split_size].shape[2:])
+            path_1 = self.scratch.refinenet1(path_2, layer_1_rn[i:i+split_size])
+            out = self.scratch.output_conv1(path_1)
+            out = F.interpolate(
+                out, (int(patch_h * 14), int(patch_w * 14)), mode="bilinear", align_corners=True
+            )
+            out = self.scratch.output_conv2(out)
+            ret.append(out)
+
+        return torch.cat(ret, dim=0)
+
+    def forward(self, out_features, patch_h, patch_w, frame_length, split_size=4):
         out = []
         for i, x in enumerate(out_features):
             if self.use_clstoken:
@@ -83,14 +104,21 @@ class DPTHeadTemporal(DPTHead):
         path_4 = self.scratch.refinenet4(layer_4_rn, size=layer_3_rn.shape[2:])
         path_4 = self.motion_modules[2](path_4.unflatten(0, (B, T)).permute(0, 2, 1, 3, 4), None, None).permute(0, 2, 1, 3, 4).flatten(0, 1)
         path_3 = self.scratch.refinenet3(path_4, layer_3_rn, size=layer_2_rn.shape[2:])
-        path_3 = self.motion_modules[3](path_3.unflatten(0, (B, T)).permute(0, 2, 1, 3, 4), None, None).permute(0, 2, 1, 3, 4).flatten(0, 1)
-        path_2 = self.scratch.refinenet2(path_3, layer_2_rn, size=layer_1_rn.shape[2:])
-        path_1 = self.scratch.refinenet1(path_2, layer_1_rn)
 
-        out = self.scratch.output_conv1(path_1)
-        out = F.interpolate(
-            out, (int(patch_h * 14), int(patch_w * 14)), mode="bilinear", align_corners=True
-        )
-        out = self.scratch.output_conv2(out)
+        path_3 = self.motion_modules[3](path_3.unflatten(0, (B, T)).permute(0, 2, 1, 3, 4), None, None).permute(0, 2, 1, 3, 4).flatten(0, 1)
+
+        if layer_1_rn.shape[0] <= split_size:
+            path_2 = self.scratch.refinenet2(path_3, layer_2_rn, size=layer_1_rn.shape[2:])
+            path_1 = self.scratch.refinenet1(path_2, layer_1_rn)
+            out = self.scratch.output_conv1(path_1)
+            out = F.interpolate(
+                out, (int(patch_h * 14), int(patch_w * 14)), mode="bilinear", align_corners=True
+            )
+            out = self.scratch.output_conv2(out)
+        else:
+            out = self._split_forward_last(split_size,
+                                           layer_1_rn=layer_1_rn, layer_2_rn=layer_2_rn,
+                                           path_3=path_3,
+                                           patch_h=patch_h, patch_w=patch_w)
 
         return out
