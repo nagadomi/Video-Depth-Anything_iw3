@@ -66,6 +66,8 @@ class DPTHeadTemporal(DPTHead):
             out = F.interpolate(
                 out, (int(patch_h * 14), int(patch_w * 14)), mode="bilinear", align_corners=True
             )
+            # NOTE: The author uses fp32 forcibly here, so +inf could occur with fp16.
+            # I have encountered that problem before with zoedepth but not with depth-anything.
             out = self.scratch.output_conv2(out)
             ret.append(out)
 
