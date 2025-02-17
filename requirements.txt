@@ -11,3 +11,4 @@ decord
 einops
 easydict
 tqdm
+av==13.1.0
