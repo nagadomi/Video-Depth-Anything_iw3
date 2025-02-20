@@ -97,7 +97,11 @@ def main():
     output_stream.pix_fmt = "yuv420p"
     output_stream.width = input_stream.width
     output_stream.height = input_stream.height
-    output_stream.options = {"preset": "medium", "crf": "20"}
+    if codec == "libx264":
+        output_stream.options = {"preset": "medium", "crf": "20"}
+    elif codec == "libopenh264":
+        # bitrate
+        output_stream.options = {"b": "8M"}
     output_stream.thread_type = "AUTO"
 
     total = guess_frames(input_stream, container_duration=container_duration) + 32  # Rough value
@@ -124,7 +128,7 @@ def main():
                     output_container.mux(enc_packet)
                 pbar.update(1)
 
-    # flash
+    # flush
     while output_frame_count < input_frame_count:
         depth_list = video_depth_anything.infer(None, input_stream.width, input_stream.height)
         if depth_list is None:

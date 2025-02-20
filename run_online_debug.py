@@ -54,7 +54,7 @@ if __name__ == '__main__':
             output_frame_count += 1
             depths.append(depth)
 
-    # flash
+    # flush
     while output_frame_count < input_frame_count:
         depth_list = video_depth_anything.infer(None, frame_width, frame_height)
         if depth_list is None:
