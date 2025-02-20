@@ -17,6 +17,7 @@ import matplotlib
 
 
 COLORMAP = np.array(matplotlib.colormaps.get_cmap("inferno").colors)
+VIDEO_CONTAINER = "mkv"  # mp4 or mkv
 
 
 def color_depth(depth, d_min, d_max):
@@ -90,7 +91,7 @@ def main():
         container_duration = float(input_container.duration / av.time_base)
     else:
         container_duration = None
-    output_container = av.open(path.join(args.output_dir, f"{video_name}_vis_online.mp4"), 'w')
+    output_container = av.open(path.join(args.output_dir, f"{video_name}_vis_online.{VIDEO_CONTAINER}"), 'w')
     codec = "libopenh264" if "libopenh264" in av.codec.codecs_available else "libx264"
     output_stream = output_container.add_stream(codec, rate=input_stream.guessed_rate)
     output_stream.thread_type = "AUTO"
