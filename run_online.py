@@ -59,12 +59,57 @@ class EMAMinMax():
         self.min = self.max = None
 
 
+class EMAScaler():
+    def __init__(self, alpha=0.75):
+        self.ema = EMAMinMax(alpha=alpha)
+
+    def scale(self, depth_list):
+        color_depth_list = []
+        for depth in depth_list:
+            color_depth_list.append(
+                color_depth(depth, *self.ema.update(depth.min(), depth.max()))
+            )
+        return color_depth_list
+
+    def clear(self):
+        self.ema.clear()
+
+
+class InterpolationScaler():
+    # Linear interpolation from the previous batch to the current batch
+    def __init__(self, alpha=0.75):
+        self.ema = EMAMinMax(alpha=alpha)
+
+    def scale(self, depth_list):
+        min_value = min(depth.min() for depth in depth_list)
+        max_value = min(depth.max() for depth in depth_list)
+
+        prev_min_value = self.ema.min if self.ema.min is not None else min_value
+        prev_max_value = self.ema.max if self.ema.max is not None else max_value
+        cur_min_value, cur_max_value = self.ema.update(min_value, max_value)
+
+        min_steps = torch.linspace(prev_min_value, cur_min_value, len(depth_list))
+        max_steps = torch.linspace(prev_max_value, cur_max_value, len(depth_list))
+
+        color_depth_list = []
+        for i, depth in enumerate(depth_list):
+            color_depth_list.append(
+                color_depth(depth, min_steps[i].item(), max_steps[i].item())
+            )
+        return color_depth_list
+
+    def clear(self):
+        self.ema.clear()
+
+
 def main():
     parser = argparse.ArgumentParser(description='Video Depth Anything')
     parser.add_argument('--input_video', type=str, default='./assets/example_videos/davis_rollercoaster.mp4')
     parser.add_argument('--output_dir', type=str, default='./outputs')
     parser.add_argument('--input_size', type=int, default=518)
     parser.add_argument('--encoder', type=str, default='vitl', choices=['vits', 'vitl'])
+    parser.add_argument('--scaler', type=str, default='ema', choices=["ema", "linear", "ema_linear"])
+    parser.add_argument('--ema-alpha', type=float, default=0.75)
 
     args = parser.parse_args()
     DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -77,7 +122,6 @@ def main():
                             map_location='cpu', weights_only=True)
     video_depth_anything.load_state_dict(state_dict, strict=True)
     video_depth_anything = video_depth_anything.to(DEVICE).eval()
-
     video_name = path.splitext(path.basename(args.input_video))[0]
     os.makedirs(args.output_dir, exist_ok=True)
 
@@ -109,7 +153,13 @@ def main():
     pbar = tqdm(desc=video_name, total=total, ncols=80)
 
     # online sequential frame input
-    ema_minmax = EMAMinMax()
+    if args.scaler == "ema":
+        scaler = EMAScaler(args.ema_alpha)
+    elif args.scaler == "linear":
+        scaler = InterpolationScaler(0.0)
+    elif args.scaler == "ema_linear":
+        scaler = InterpolationScaler(args.ema_alpha)
+
     input_frame_count = 0
     output_frame_count = 0
     for packet in input_container.demux([input_stream]):
@@ -121,9 +171,9 @@ def main():
             if depth_list is None:
                 continue
 
-            for depth in depth_list:
+            color_depth_list = scaler.scale(depth_list)
+            for depth in color_depth_list:
                 output_frame_count += 1
-                depth = color_depth(depth, *ema_minmax.update(depth.min(), depth.max()))
                 enc_packet = output_stream.encode(VideoFrame.from_ndarray(depth))
                 if enc_packet:
                     output_container.mux(enc_packet)
@@ -134,9 +184,9 @@ def main():
         depth_list = video_depth_anything.infer(None, input_stream.width, input_stream.height)
         if depth_list is None:
             continue
-        for depth in depth_list:
+        color_depth_list = scaler.scale(depth_list)
+        for depth in color_depth_list:
             output_frame_count += 1
-            depth = color_depth(depth, *ema_minmax.update(depth.min(), depth.max()))
             enc_packet = output_stream.encode(VideoFrame.from_ndarray(depth))
             if enc_packet:
                 output_container.mux(enc_packet)
