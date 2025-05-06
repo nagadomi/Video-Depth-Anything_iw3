@@ -176,10 +176,12 @@ def main():
     for packet in input_container.demux([input_stream]):
         for frame in packet.decode():
             frame = torch.from_numpy(frame.to_ndarray(format="rgb24")).permute(2, 0, 1) / 255.0
-            frame = transform(frame, args.input_size)
 
             if args.metric:
+                frame = transform(frame, args.input_size - METRIC_PADDING * 2)
                 frame = F.pad(frame, (METRIC_PADDING,) * 4, mode="reflect")
+            else:
+                frame = transform(frame, args.input_size)
 
             depth_list = video_depth_anything.infer(frame)
             input_frame_count += 1
