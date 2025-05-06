@@ -11,10 +11,15 @@ import torch
 from video_depth_anything.video_depth_online_torch import VideoDepthAnythingOnline
 from video_depth_anything.util.transform_torch import transform
 import matplotlib
+import torch.nn.functional as F
 
 
 COLORMAP = torch.tensor(matplotlib.colormaps.get_cmap("inferno").colors)
 VIDEO_CONTAINER = "mkv"  # mp4 or mkv
+
+# Padding size for metric depth.
+# Without this, unstable/outlier values sometimes occur at the edges of the image.
+METRIC_PADDING = 14
 
 
 def color_depth(depth, d_min, d_max):
@@ -108,6 +113,7 @@ def main():
     parser.add_argument('--output_dir', type=str, default='./outputs')
     parser.add_argument('--input_size', type=int, default=518)
     parser.add_argument('--encoder', type=str, default='vitl', choices=['vits', 'vitl'])
+    parser.add_argument('--metric', action="store_true")
     parser.add_argument('--scaler', type=str, default='ema', choices=["ema", "linear", "ema_linear"])
     parser.add_argument('--ema-alpha', type=float, default=0.75)
 
@@ -117,9 +123,14 @@ def main():
         'vits': {'encoder': 'vits', 'features': 64, 'out_channels': [48, 96, 192, 384]},
         'vitl': {'encoder': 'vitl', 'features': 256, 'out_channels': [256, 512, 1024, 1024]},
     }
-    video_depth_anything = VideoDepthAnythingOnline(**model_configs[args.encoder])
-    state_dict = torch.load(f'./checkpoints/video_depth_anything_{args.encoder}.pth',
-                            map_location='cpu', weights_only=True)
+    video_depth_anything = VideoDepthAnythingOnline(metric_depth=args.metric, **model_configs[args.encoder])
+    if args.metric:
+        state_dict = torch.load(f'./checkpoints/metric_video_depth_anything_{args.encoder}.pth',
+                                map_location='cpu', weights_only=True)
+    else:
+        state_dict = torch.load(f'./checkpoints/video_depth_anything_{args.encoder}.pth',
+                                map_location='cpu', weights_only=True)
+
     video_depth_anything.load_state_dict(state_dict, strict=True)
     video_depth_anything = video_depth_anything.to(DEVICE).eval()
     video_name = path.splitext(path.basename(args.input_video))[0]
@@ -166,11 +177,19 @@ def main():
         for frame in packet.decode():
             frame = torch.from_numpy(frame.to_ndarray(format="rgb24")).permute(2, 0, 1) / 255.0
             frame = transform(frame, args.input_size)
+
+            if args.metric:
+                frame = F.pad(frame, (METRIC_PADDING,) * 4, mode="reflect")
+
             depth_list = video_depth_anything.infer(frame)
             input_frame_count += 1
 
             if depth_list is None:
                 continue
+
+            if args.metric:
+                for i in range(len(depth_list)):
+                    depth_list[i] = 1.0 / (F.pad(depth_list[i], (-METRIC_PADDING,) * 4) + 1.0)
 
             # NOTE: The depth is not resized to the original size but is resized during encoding.
             color_depth_list = scaler.scale(depth_list)
@@ -186,6 +205,11 @@ def main():
         depth_list = video_depth_anything.infer(None)
         if depth_list is None:
             continue
+
+        if args.metric:
+            for i in range(len(depth_list)):
+                depth_list[i] = 1.0 / (F.pad(depth_list[i], (-METRIC_PADDING,) * 4) + 1.0)
+
         color_depth_list = scaler.scale(depth_list)
         for depth in color_depth_list:
             output_frame_count += 1

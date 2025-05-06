@@ -60,7 +60,8 @@ class VideoDepthAnythingOnline(nn.Module):
             num_frames=32,
             device="cuda",
             use_amp=True,
-            pe='ape'
+            pe='ape',
+            metric_depth=False,
     ):
         super(VideoDepthAnythingOnline, self).__init__()
 
@@ -71,6 +72,7 @@ class VideoDepthAnythingOnline(nn.Module):
 
         self.encoder = encoder
         self.pretrained = DINOv2(model_name=encoder)
+        self.metric_depth = metric_depth
         self.head = DPTHeadTemporal(
             self.pretrained.embed_dim, features, use_bn,
             out_channels=out_channels, use_clstoken=use_clstoken, num_frames=num_frames, pe=pe)
@@ -176,7 +178,10 @@ class VideoDepthAnythingOnline(nn.Module):
         for i in range(len(KF_ALIGN_LIST)):
             curr_align.append(depth_list[i])
 
-        scale, shift = compute_scale_and_shift(torch.cat(curr_align), torch.cat(self.ref_align), mask=None)
+        if self.metric_depth:
+            scale, shift = 1.0, 0.0
+        else:
+            scale, shift = compute_scale_and_shift(torch.cat(curr_align), torch.cat(self.ref_align), mask=None)
 
         pre_depth_list = self.depth_list_aligned[-INTERP_LEN:]
         post_depth_list = depth_list[ALIGN_LEN:OVERLAP]  # 0+2:0+10, = 8
