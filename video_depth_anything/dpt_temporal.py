@@ -16,7 +16,6 @@ import torch.nn.functional as F
 import torch.nn as nn
 from .dpt import DPTHead
 from .motion_module.motion_module import TemporalModule
-from easydict import EasyDict
 
 
 def _show_vram(device, name=""):
@@ -38,12 +37,12 @@ class DPTHeadTemporal(DPTHead):
         super().__init__(in_channels, features, use_bn, out_channels, use_clstoken)
 
         assert num_frames > 0
-        motion_module_kwargs = EasyDict(num_attention_heads                = 8,
-                                        num_transformer_block              = 1,
-                                        num_attention_blocks               = 2,
-                                        temporal_max_len                   = num_frames,
-                                        zero_initialize                    = True,
-                                        pos_embedding_type                 = pe)
+        motion_module_kwargs = dict(num_attention_heads                = 8,
+                                    num_transformer_block              = 1,
+                                    num_attention_blocks               = 2,
+                                    temporal_max_len                   = num_frames,
+                                    zero_initialize                    = True,
+                                    pos_embedding_type                 = pe)
 
         self.motion_modules = nn.ModuleList([
             TemporalModule(in_channels=out_channels[2], 
