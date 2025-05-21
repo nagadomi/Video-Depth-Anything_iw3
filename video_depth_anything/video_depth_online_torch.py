@@ -157,7 +157,7 @@ class VideoDepthAnythingOnline(nn.Module):
                 depth = self.forward(cur_input)  # depth shape: [1, T, H, W]
 
         depth = depth.flatten(0, 1).unsqueeze(1)
-        depth = depth.cpu().float()
+        depth = depth.float()
         depth_list = [depth[i][0] for i in range(depth.shape[0])]
         if self.pre_input is None:
             self.pre_input = cur_input.detach()
