@@ -33,7 +33,7 @@ def _load_state_dict(encoder, metric_depth):
             raise ValueError(f"encoder={encoder} is not supported")
 
 
-def VideoDepthAnythingOnline(encoder):
+def VideoDepthAnythingOnline(encoder, device="cpu"):
     from video_depth_anything.video_depth_online_torch import VideoDepthAnythingOnline
     assert encoder in {"vits", "vitl"}
 
@@ -41,20 +41,20 @@ def VideoDepthAnythingOnline(encoder):
         'vits': {'encoder': 'vits', 'features': 64, 'out_channels': [48, 96, 192, 384]},
         'vitl': {'encoder': 'vitl', 'features': 256, 'out_channels': [256, 512, 1024, 1024]},
     }
-    model = VideoDepthAnythingOnline(metric_depth=False, **model_configs[encoder])
+    model = VideoDepthAnythingOnline(device=device, metric_depth=False, **model_configs[encoder])
     model.load_state_dict(_load_state_dict(encoder, metric_depth=False), strict=True)
 
     return model
 
 
-def MetricVideoDepthAnythingOnline(encoder):
+def MetricVideoDepthAnythingOnline(encoder, device="cpu"):
     from video_depth_anything.video_depth_online_torch import VideoDepthAnythingOnline
     assert encoder in {"vitl"}
     model_configs = {
         'vits': {'encoder': 'vits', 'features': 64, 'out_channels': [48, 96, 192, 384]},
         'vitl': {'encoder': 'vitl', 'features': 256, 'out_channels': [256, 512, 1024, 1024]},
     }
-    model = VideoDepthAnythingOnline(metric_depth=True, **model_configs[encoder])
+    model = VideoDepthAnythingOnline(device=device, metric_depth=True, **model_configs[encoder])
     model.load_state_dict(_load_state_dict(encoder, metric_depth=True), strict=True)
 
     return model

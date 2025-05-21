@@ -74,7 +74,10 @@ class VideoDepthAnythingOnline(nn.Module):
         self.head = DPTHeadTemporal(
             self.pretrained.embed_dim, features, use_bn,
             out_channels=out_channels, use_clstoken=use_clstoken, num_frames=num_frames, pe=pe)
-        self.device = torch.device(device)
+        if device is not None:
+            self.device = torch.device(device)
+        else:
+            self.device = None
 
         self.reset_state()
 
@@ -114,7 +117,10 @@ class VideoDepthAnythingOnline(nn.Module):
         append_frame_len = 0
         if frame is None:
             # final
-            append_frame_len = INFER_LEN - (len(self.cur_list) + self.overlap_input.shape[1])
+            if self.overlap_input is not None:
+                append_frame_len = INFER_LEN - (len(self.cur_list) + self.overlap_input.shape[1])
+            else:
+                append_frame_len = INFER_LEN - len(self.cur_list)
             if append_frame_len > 0:
                 if len(self.cur_list) > 0:
                     self.cur_list += [self.cur_list[-1].detach().clone()] * append_frame_len
