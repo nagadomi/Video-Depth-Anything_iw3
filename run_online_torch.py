@@ -233,6 +233,9 @@ def main():
     input_container.close()
     output_container.close()
 
+    max_vram_mb = int(torch.cuda.max_memory_allocated(DEVICE) / (1024 * 1024))
+    print(f"GPU Max Memory Allocated {max_vram_mb}MB")
+
 
 if __name__ == "__main__":
     main()
