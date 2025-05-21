@@ -17,11 +17,10 @@
 import torch
 import torch.nn.functional as F
 import torch.nn as nn
-import gc
 
 from .dinov2 import DINOv2
 from .dpt_temporal import DPTHeadTemporal
-from utils.util_torch import compute_scale_and_shift, get_interpolate_frames
+from .util.align_torch import compute_scale_and_shift, get_interpolate_frames
 
 # infer settings, do not change
 INFER_LEN = 32
@@ -59,7 +58,6 @@ class VideoDepthAnythingOnline(nn.Module):
             use_clstoken=False,
             num_frames=32,
             device="cuda",
-            use_amp=True,
             pe='ape',
             metric_depth=False,
     ):
@@ -77,7 +75,6 @@ class VideoDepthAnythingOnline(nn.Module):
             self.pretrained.embed_dim, features, use_bn,
             out_channels=out_channels, use_clstoken=use_clstoken, num_frames=num_frames, pe=pe)
         self.device = torch.device(device)
-        self.use_amp = use_amp
 
         self.reset_state()
 
@@ -161,7 +158,7 @@ class VideoDepthAnythingOnline(nn.Module):
         else:
             self.pre_input.copy_(cur_input.detach())
 
-        gc.collect()
+        # gc.collect()
 
         return depth_list  # len(depth_list) == 32
 

@@ -12,6 +12,7 @@ from video_depth_anything.video_depth_online_torch import VideoDepthAnythingOnli
 from video_depth_anything.util.transform_torch import transform
 import matplotlib
 import torch.nn.functional as F
+import gc
 
 
 COLORMAP = torch.tensor(matplotlib.colormaps.get_cmap("inferno").colors)
@@ -201,6 +202,7 @@ def main():
                 if enc_packet:
                     output_container.mux(enc_packet)
                 pbar.update(1)
+            gc.collect()
 
     # flush
     while output_frame_count < input_frame_count:
