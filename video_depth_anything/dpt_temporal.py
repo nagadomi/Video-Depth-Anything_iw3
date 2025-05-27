@@ -67,7 +67,14 @@ class DPTHeadTemporal(DPTHead):
             )
             # NOTE: The author uses fp32 forcibly here, so +inf could occur with fp16.
             # I have encountered that problem before with zoedepth but not with depth-anything.
-            out = self.scratch.output_conv2(out)
+            # UPDATE: inf happened!
+            if torch.is_autocast_enabled(out.device.type):
+                ori_type = out.dtype
+                with torch.amp.autocast(device_type=out.device.type, enabled=False):
+                    out = self.scratch.output_conv2(out)
+                out = out.to(ori_type)
+            else:
+                out = self.scratch.output_conv2(out)
             ret.append(out)
 
         return torch.cat(ret, dim=0)
@@ -115,7 +122,13 @@ class DPTHeadTemporal(DPTHead):
             out = F.interpolate(
                 out, (int(patch_h * 14), int(patch_w * 14)), mode="bilinear", align_corners=True
             )
-            out = self.scratch.output_conv2(out)
+            if torch.is_autocast_enabled(out.device.type):
+                ori_type = out.dtype
+                with torch.amp.autocast(device_type=out.device.type, enabled=False):
+                    out = self.scratch.output_conv2(out)
+                out = out.to(ori_type)
+            else:
+                out = self.scratch.output_conv2(out)
         else:
             out = self._split_forward_last(split_size,
                                            layer_1_rn=layer_1_rn, layer_2_rn=layer_2_rn,
