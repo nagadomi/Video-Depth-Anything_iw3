@@ -71,7 +71,7 @@ class DPTHeadTemporal(DPTHead):
             if torch.is_autocast_enabled(out.device.type):
                 ori_type = out.dtype
                 with torch.amp.autocast(device_type=out.device.type, enabled=False):
-                    out = self.scratch.output_conv2(out)
+                    out = self.scratch.output_conv2(out.to(torch.float32))
                 out = out.to(ori_type)
             else:
                 out = self.scratch.output_conv2(out)
