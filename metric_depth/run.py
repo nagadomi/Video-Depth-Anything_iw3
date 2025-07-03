@@ -21,35 +21,32 @@ from utils.dc_utils import read_video_frames, save_video
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Video Depth Anything')
-    parser.add_argument('--input_video', type=str, default='./assets/example_videos/davis_rollercoaster.mp4')
+    parser.add_argument('--input_video', type=str, default='../assets/davis_rollercoaster.mp4')
     parser.add_argument('--output_dir', type=str, default='./outputs')
     parser.add_argument('--input_size', type=int, default=518)
     parser.add_argument('--max_res', type=int, default=1280)
-    parser.add_argument('--encoder', type=str, default='vitl', choices=['vits', 'vitl'])
+    parser.add_argument('--encoder', type=str, default='vitl', choices=['vitl'])
     parser.add_argument('--max_len', type=int, default=-1, help='maximum length of the input video, -1 means no limit')
     parser.add_argument('--target_fps', type=int, default=-1, help='target fps of the input video, -1 means the original fps')
     parser.add_argument('--fp32', action='store_true', help='model infer with torch.float32, default is torch.float16')
-    parser.add_argument('--grayscale', action='store_true', help='do not apply colorful palette')
     parser.add_argument('--save_npz', action='store_true', help='save depths as npz')
-    parser.add_argument('--save_exr', action='store_true', help='save depths as exr')
-
+    parser.add_argument('--grayscale', action='store_true', help='do not apply colorful palette')
+    
     args = parser.parse_args()
 
     DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 
     model_configs = {
-        'vits': {'encoder': 'vits', 'features': 64, 'out_channels': [48, 96, 192, 384]},
         'vitl': {'encoder': 'vitl', 'features': 256, 'out_channels': [256, 512, 1024, 1024]},
     }
 
     video_depth_anything = VideoDepthAnything(**model_configs[args.encoder])
-    video_depth_anything.load_state_dict(torch.load(f'./checkpoints/video_depth_anything_{args.encoder}.pth', map_location='cpu'), strict=True)
+    video_depth_anything.load_state_dict(torch.load(f'./checkpoints/metric_video_depth_anything_{args.encoder}.pth', map_location='cpu'), strict=True)
     video_depth_anything = video_depth_anything.to(DEVICE).eval()
 
     frames, target_fps = read_video_frames(args.input_video, args.max_len, args.target_fps, args.max_res)
-    depths, fps = video_depth_anything.infer_video_depth(frames, target_fps, input_size=args.input_size,
-                                                         device=DEVICE, fp32=args.fp32)
-
+    depths, fps = video_depth_anything.infer_video_depth(frames, target_fps, input_size=args.input_size, device=DEVICE, fp32=args.fp32)
+    
     video_name = os.path.basename(args.input_video)
     if not os.path.exists(args.output_dir):
         os.makedirs(args.output_dir)
@@ -77,5 +74,6 @@ if __name__ == '__main__':
             exr_file.writePixels({"Z": depth.tobytes()})
             exr_file.close()
 
-    max_vram_mb = int(torch.cuda.max_memory_allocated(DEVICE) / (1024 * 1024))
-    print(f"GPU Max Memory Allocated {max_vram_mb}MB")
+    
+
+
