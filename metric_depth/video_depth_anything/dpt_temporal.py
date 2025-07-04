@@ -16,12 +16,7 @@ import torch.nn.functional as F
 import torch.nn as nn
 from .dpt import DPTHead
 from .motion_module.motion_module import TemporalModule
-
-
-def _show_vram(device, name=""):
-    max_vram_mb = int(torch.cuda.max_memory_allocated(device) / (1024 * 1024))
-    vram_mb = int(torch.cuda.memory_allocated(device) / (1024 * 1024))
-    print(f"[{name}] VRAM Max: {max_vram_mb}MB, Usage: {vram_mb}MB")
+from easydict import EasyDict
 
 
 class DPTHeadTemporal(DPTHead):
@@ -37,12 +32,12 @@ class DPTHeadTemporal(DPTHead):
         super().__init__(in_channels, features, use_bn, out_channels, use_clstoken)
 
         assert num_frames > 0
-        motion_module_kwargs = dict(num_attention_heads                = 8,
-                                    num_transformer_block              = 1,
-                                    num_attention_blocks               = 2,
-                                    temporal_max_len                   = num_frames,
-                                    zero_initialize                    = True,
-                                    pos_embedding_type                 = pe)
+        motion_module_kwargs = EasyDict(num_attention_heads                = 8,
+                                        num_transformer_block              = 1,
+                                        num_attention_blocks               = 2,
+                                        temporal_max_len                   = num_frames,
+                                        zero_initialize                    = True,
+                                        pos_embedding_type                 = pe)
 
         self.motion_modules = nn.ModuleList([
             TemporalModule(in_channels=out_channels[2], 
@@ -55,8 +50,7 @@ class DPTHeadTemporal(DPTHead):
                            **motion_module_kwargs)
         ])
 
-    def forward(self, out_features, patch_h, patch_w, frame_length, micro_batch_size=4,
-                cached_hidden_state_list=None, return_hidden_state_list=True):
+    def forward(self, out_features, patch_h, patch_w, frame_length, micro_batch_size=4):
         out = []
         for i, x in enumerate(out_features):
             if self.use_clstoken:
@@ -77,19 +71,9 @@ class DPTHeadTemporal(DPTHead):
         layer_1, layer_2, layer_3, layer_4 = out
 
         B, T = layer_1.shape[0] // frame_length, frame_length
-        if cached_hidden_state_list is not None:
-            N = len(cached_hidden_state_list) // len(self.motion_modules)
-        else:
-            N = 0
 
-        layer_3, h0 = self.motion_modules[0](layer_3.unflatten(0, (B, T)).permute(0, 2, 1, 3, 4), None, None,
-                                             cached_hidden_state_list[0:N] if N else None,
-                                             return_hidden_state_list=return_hidden_state_list)
-        layer_3 = layer_3.permute(0, 2, 1, 3, 4).flatten(0, 1)
-        layer_4, h1 = self.motion_modules[1](layer_4.unflatten(0, (B, T)).permute(0, 2, 1, 3, 4), None, None,
-                                             cached_hidden_state_list[N:2*N] if N else None,
-                                             return_hidden_state_list=return_hidden_state_list)
-        layer_4 = layer_4.permute(0, 2, 1, 3, 4).flatten(0, 1)
+        layer_3 = self.motion_modules[0](layer_3.unflatten(0, (B, T)).permute(0, 2, 1, 3, 4), None, None).permute(0, 2, 1, 3, 4).flatten(0, 1)
+        layer_4 = self.motion_modules[1](layer_4.unflatten(0, (B, T)).permute(0, 2, 1, 3, 4), None, None).permute(0, 2, 1, 3, 4).flatten(0, 1)
 
         layer_1_rn = self.scratch.layer1_rn(layer_1)
         layer_2_rn = self.scratch.layer2_rn(layer_2)
@@ -97,15 +81,9 @@ class DPTHeadTemporal(DPTHead):
         layer_4_rn = self.scratch.layer4_rn(layer_4)
 
         path_4 = self.scratch.refinenet4(layer_4_rn, size=layer_3_rn.shape[2:])
-        path_4, h2 = self.motion_modules[2](path_4.unflatten(0, (B, T)).permute(0, 2, 1, 3, 4), None, None,
-                                            cached_hidden_state_list[2*N:3*N] if N else None,
-                                            return_hidden_state_list=return_hidden_state_list)
-        path_4 = path_4.permute(0, 2, 1, 3, 4).flatten(0, 1)
+        path_4 = self.motion_modules[2](path_4.unflatten(0, (B, T)).permute(0, 2, 1, 3, 4), None, None).permute(0, 2, 1, 3, 4).flatten(0, 1)
         path_3 = self.scratch.refinenet3(path_4, layer_3_rn, size=layer_2_rn.shape[2:])
-        path_3, h3 = self.motion_modules[3](path_3.unflatten(0, (B, T)).permute(0, 2, 1, 3, 4), None, None,
-                                            cached_hidden_state_list[3*N:] if N else None,
-                                            return_hidden_state_list=return_hidden_state_list)
-        path_3 = path_3.permute(0, 2, 1, 3, 4).flatten(0, 1)
+        path_3 = self.motion_modules[3](path_3.unflatten(0, (B, T)).permute(0, 2, 1, 3, 4), None, None).permute(0, 2, 1, 3, 4).flatten(0, 1)
 
         batch_size = layer_1_rn.shape[0]
         if batch_size <= micro_batch_size or batch_size % micro_batch_size != 0:
@@ -117,12 +95,9 @@ class DPTHeadTemporal(DPTHead):
                 out, (int(patch_h * 14), int(patch_w * 14)), mode="bilinear", align_corners=True
             )
             ori_type = out.dtype
-            if out.device.type == "cuda":
-                with torch.autocast(device_type="cuda", enabled=False):
-                    out = self.scratch.output_conv2(out.float())
-            else:
-                out = self.scratch.output_conv2(out)
-            output = out.to(ori_type) 
+            with torch.autocast(device_type="cuda", enabled=False):
+                out = self.scratch.output_conv2(out.float())
+            return out.to(ori_type)
         else:
             ret = []
             for i in range(0, batch_size, micro_batch_size):
@@ -133,12 +108,7 @@ class DPTHeadTemporal(DPTHead):
                     out, (int(patch_h * 14), int(patch_w * 14)), mode="bilinear", align_corners=True
                 )
                 ori_type = out.dtype
-                if out.device.type == "cuda":
-                    with torch.autocast(device_type="cuda", enabled=False):
-                        out = self.scratch.output_conv2(out.float())
-                else:
-                    out = self.scratch.output_conv2(out)
+                with torch.autocast(device_type="cuda", enabled=False):
+                    out = self.scratch.output_conv2(out.float())
                 ret.append(out.to(ori_type))
-            output = torch.cat(ret, dim=0)
-        
-        return output, h0 + h1 + h2 + h3
+            return torch.cat(ret, dim=0)
