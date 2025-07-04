@@ -63,6 +63,11 @@ class VideoDepthAnythingStreamingTorch(nn.Module):
         assert self.gap == 41
         self.id = -1
 
+    def reset_state(self):
+        self.id = -1
+        self.frame_id_list = []
+        self.frame_cache_list = []
+
     def forward(self, x):
         return self.forward_depth(self.forward_features(x), x.shape)[0]
 
