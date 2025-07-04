@@ -95,7 +95,7 @@ class VideoDepthAnythingOnline(nn.Module):
         features = self.pretrained.get_intermediate_layers(
             x.flatten(0, 1), self.intermediate_layer_idx[self.encoder], return_class_token=True)
 
-        depth = self.head(features, patch_h, patch_w, T)
+        depth = self.head(features, patch_h, patch_w, T, return_hidden_state_list=False)[0]
         depth = F.interpolate(depth, size=(H, W), mode="bilinear", align_corners=True).to(depth.dtype)
         depth = F.relu(depth)
         return depth.squeeze(1).unflatten(0, (B, T))  # return shape [B, T, H, W]

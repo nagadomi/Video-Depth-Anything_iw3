@@ -57,10 +57,11 @@ class TemporalModule(nn.Module):
         if zero_initialize:
             self.temporal_transformer.proj_out = zero_module(self.temporal_transformer.proj_out)
 
-    def forward(self, input_tensor, encoder_hidden_states, attention_mask=None, cached_hidden_state_list=None):
+    def forward(self, input_tensor, encoder_hidden_states, attention_mask=None,
+                cached_hidden_state_list=None, return_hidden_state_list=True):
         hidden_states = input_tensor
-        hidden_states, output_hidden_state_list = self.temporal_transformer(hidden_states, encoder_hidden_states, attention_mask, cached_hidden_state_list)
-
+        hidden_states, output_hidden_state_list = self.temporal_transformer(hidden_states, encoder_hidden_states, attention_mask,
+                                                                            cached_hidden_state_list, return_hidden_state_list=return_hidden_state_list)
         output = hidden_states
         return output, output_hidden_state_list  # list of hidden states
 
@@ -99,7 +100,8 @@ class TemporalTransformer3DModel(nn.Module):
         )
         self.proj_out = nn.Linear(inner_dim, in_channels)
 
-    def forward(self, hidden_states, encoder_hidden_states=None, attention_mask=None, cached_hidden_state_list=None):
+    def forward(self, hidden_states, encoder_hidden_states=None, attention_mask=None,
+                cached_hidden_state_list=None, return_hidden_state_list=True):
         assert hidden_states.dim() == 5, f"Expected hidden_states to have ndim=5, but got ndim={hidden_states.dim()}."
         output_hidden_state_list = []
 
@@ -121,7 +123,8 @@ class TemporalTransformer3DModel(nn.Module):
             n = 0
         for i, block in enumerate(self.transformer_blocks):
             hidden_states, hidden_state_list = block(hidden_states, encoder_hidden_states=encoder_hidden_states, video_length=video_length, attention_mask=attention_mask,
-                                                     cached_hidden_state_list=cached_hidden_state_list[i*n:(i+1)*n] if n else None)
+                                                     cached_hidden_state_list=cached_hidden_state_list[i*n:(i+1)*n] if n else None,
+                                                     return_hidden_state_list=return_hidden_state_list)
             output_hidden_state_list.extend(hidden_state_list)
 
         # output
@@ -169,7 +172,8 @@ class TemporalTransformerBlock(nn.Module):
         self.ff_norm = nn.LayerNorm(dim)
 
 
-    def forward(self, hidden_states, encoder_hidden_states=None, attention_mask=None, video_length=None, cached_hidden_state_list=None):
+    def forward(self, hidden_states, encoder_hidden_states=None, attention_mask=None, video_length=None,
+                cached_hidden_state_list=None, return_hidden_state_list=True):
         output_hidden_state_list = []
         for i, (attention_block, norm) in enumerate(zip(self.attention_blocks, self.norms)):
             norm_hidden_states = norm(hidden_states)
@@ -181,7 +185,8 @@ class TemporalTransformerBlock(nn.Module):
                 cached_hidden_states=cached_hidden_state_list[i] if cached_hidden_state_list is not None else None,
             )
             hidden_states = residual_hidden_states + hidden_states
-            output_hidden_state_list.append(output_hidden_states)
+            if return_hidden_state_list:
+                output_hidden_state_list.append(output_hidden_states)
 
         hidden_states = self.ff(self.ff_norm(hidden_states)) + hidden_states
 

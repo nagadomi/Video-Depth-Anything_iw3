@@ -100,7 +100,7 @@ class VideoDepthAnything(nn.Module):
         B, T, C, H, W = x.shape
         patch_h, patch_w = H // 14, W // 14
         features = self.pretrained.get_intermediate_layers(x.flatten(0,1), self.intermediate_layer_idx[self.encoder], return_class_token=True)
-        depth = self.head(features, patch_h, patch_w, T)[0]
+        depth = self.head(features, patch_h, patch_w, T, return_hidden_state_list=False)[0]
         depth = F.interpolate(depth, size=(H, W), mode="bilinear", align_corners=True).to(depth.dtype) # fp32->fp16
         depth = F.relu(depth)
         return depth.squeeze(1).unflatten(0, (B, T)) # return shape [B, T, H, W]
