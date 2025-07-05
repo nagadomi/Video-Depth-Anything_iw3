@@ -117,8 +117,8 @@ class DPTHeadTemporal(DPTHead):
                 out, (int(patch_h * 14), int(patch_w * 14)), mode="bilinear", align_corners=True
             )
             ori_type = out.dtype
-            if out.device.type == "cuda":
-                with torch.autocast(device_type="cuda", enabled=False):
+            if torch.is_autocast_enabled(out.device.type):
+                with torch.autocast(device_type=out.device.type, enabled=False):
                     out = self.scratch.output_conv2(out.float())
             else:
                 out = self.scratch.output_conv2(out)
@@ -133,8 +133,8 @@ class DPTHeadTemporal(DPTHead):
                     out, (int(patch_h * 14), int(patch_w * 14)), mode="bilinear", align_corners=True
                 )
                 ori_type = out.dtype
-                if out.device.type == "cuda":
-                    with torch.autocast(device_type="cuda", enabled=False):
+                if torch.is_autocast_enabled(out.device.type):
+                    with torch.autocast(device_type=out.device.type, enabled=False):
                         out = self.scratch.output_conv2(out.float())
                 else:
                     out = self.scratch.output_conv2(out)
