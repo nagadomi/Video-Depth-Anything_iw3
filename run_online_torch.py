@@ -113,7 +113,7 @@ def main():
     parser.add_argument('--input_video', type=str, default='./assets/example_videos/davis_rollercoaster.mp4')
     parser.add_argument('--output_dir', type=str, default='./outputs')
     parser.add_argument('--input_size', type=int, default=518)
-    parser.add_argument('--encoder', type=str, default='vitl', choices=['vits', 'vitl'])
+    parser.add_argument('--encoder', type=str, default='vitl', choices=['vits', 'vitb', 'vitl'])
     parser.add_argument('--metric', action="store_true")
     parser.add_argument('--scaler', type=str, default='ema', choices=["ema", "linear", "ema_linear"])
     parser.add_argument('--ema-alpha', type=float, default=0.75)
@@ -122,6 +122,7 @@ def main():
     DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
     model_configs = {
         'vits': {'encoder': 'vits', 'features': 64, 'out_channels': [48, 96, 192, 384]},
+        'vitb': {'encoder': 'vitb', 'features': 128, 'out_channels': [96, 192, 384, 768]},
         'vitl': {'encoder': 'vitl', 'features': 256, 'out_channels': [256, 512, 1024, 1024]},
     }
     video_depth_anything = VideoDepthAnythingOnline(metric_depth=args.metric, **model_configs[args.encoder])

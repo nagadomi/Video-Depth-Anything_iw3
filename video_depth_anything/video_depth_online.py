@@ -72,6 +72,7 @@ class VideoDepthAnythingOnline(nn.Module):
 
         self.intermediate_layer_idx = {
             'vits': [2, 5, 8, 11],
+            'vitb': [2, 5, 8, 11],
             'vitl': [4, 11, 17, 23]
         }
 

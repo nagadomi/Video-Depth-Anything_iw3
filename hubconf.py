@@ -10,8 +10,8 @@ def _load_state_dict(encoder, metric_depth):
             state_dict = torch.hub.load_state_dict_from_url(url, file_name=file_name,
                                                             weights_only=True, map_location=torch.device("cpu"))
             return state_dict
-        elif encoder == "vitl":
-            file_name = "video_depth_anything_vitl.pth"
+        elif encoder in {"vitb", "vitl"}:
+            file_name = f"video_depth_anything_{encoder}.pth"
             checkpoint_path = path.join(torch.hub.get_dir(), "checkpoints", file_name)
             if path.exists(checkpoint_path):
                 state_dict = torch.load(checkpoint_path, weights_only=True, map_location=torch.device("cpu"))
@@ -21,8 +21,14 @@ def _load_state_dict(encoder, metric_depth):
         else:
             raise ValueError(f"encoder={encoder} is not supported")
     else:
-        if encoder == "vitl":
-            file_name = "metric_video_depth_anything_vitl.pth"
+        if encoder == "vits":
+            file_name = "metric_video_depth_anything_vits.pth"
+            url = f"https://huggingface.co/depth-anything/Metric-Video-Depth-Anything-Small/resolve/main/{file_name}?download=true"
+            state_dict = torch.hub.load_state_dict_from_url(url, file_name=file_name,
+                                                            weights_only=True, map_location=torch.device("cpu"))
+            return state_dict
+        elif encoder in {"vitb", "vitl"}:
+            file_name = f"metric_video_depth_anything_{encoder}.pth"
             checkpoint_path = path.join(torch.hub.get_dir(), "checkpoints", file_name)
             if path.exists(checkpoint_path):
                 state_dict = torch.load(checkpoint_path, weights_only=True, map_location=torch.device("cpu"))
@@ -35,10 +41,11 @@ def _load_state_dict(encoder, metric_depth):
 
 def VideoDepthAnythingOnline(encoder, device="cpu"):
     from video_depth_anything.video_depth_online_torch import VideoDepthAnythingOnline
-    assert encoder in {"vits", "vitl"}
+    assert encoder in {"vitl", "vitb", "vits"}
 
     model_configs = {
         'vits': {'encoder': 'vits', 'features': 64, 'out_channels': [48, 96, 192, 384]},
+        'vitb': {'encoder': 'vitb', 'features': 128, 'out_channels': [96, 192, 384, 768]},
         'vitl': {'encoder': 'vitl', 'features': 256, 'out_channels': [256, 512, 1024, 1024]},
     }
     model = VideoDepthAnythingOnline(device=device, metric_depth=False, **model_configs[encoder])
@@ -49,10 +56,11 @@ def VideoDepthAnythingOnline(encoder, device="cpu"):
 
 def VideoDepthAnythingStreaming(encoder, device="cpu"):
     from video_depth_anything.video_depth_stream_torch import VideoDepthAnythingStreamingTorch
-    assert encoder in {"vits", "vitl"}
+    assert encoder in {"vitl", "vitb", "vits"}
 
     model_configs = {
         'vits': {'encoder': 'vits', 'features': 64, 'out_channels': [48, 96, 192, 384]},
+        'vitb': {'encoder': 'vitb', 'features': 128, 'out_channels': [96, 192, 384, 768]},
         'vitl': {'encoder': 'vitl', 'features': 256, 'out_channels': [256, 512, 1024, 1024]},
     }
     model = VideoDepthAnythingStreamingTorch(device=device, **model_configs[encoder])
@@ -63,9 +71,10 @@ def VideoDepthAnythingStreaming(encoder, device="cpu"):
 
 def MetricVideoDepthAnythingOnline(encoder, device="cpu"):
     from video_depth_anything.video_depth_online_torch import VideoDepthAnythingOnline
-    assert encoder in {"vitl"}
+    assert encoder in {"vitl", "vitb", "vits"}
     model_configs = {
         'vits': {'encoder': 'vits', 'features': 64, 'out_channels': [48, 96, 192, 384]},
+        'vitb': {'encoder': 'vitb', 'features': 128, 'out_channels': [96, 192, 384, 768]},
         'vitl': {'encoder': 'vitl', 'features': 256, 'out_channels': [256, 512, 1024, 1024]},
     }
     model = VideoDepthAnythingOnline(device=device, metric_depth=True, **model_configs[encoder])
@@ -78,7 +87,7 @@ def _test():
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--encoder", type=str, default="vitl", choices=["vits", "vitl"])
+    parser.add_argument("--encoder", type=str, default="vitl", choices=["vits", "vitb", "vitl"])
     parser.add_argument("--metric", action="store_true")
     parser.add_argument("--remote", action="store_true", help="use remote repo")
     parser.add_argument("--reload", action="store_true", help="reload remote repo")
