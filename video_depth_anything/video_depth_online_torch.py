@@ -85,7 +85,6 @@ class VideoDepthAnythingOnline(nn.Module):
     def reset_state(self):
         self.cur_list = []
         self.pre_input = None
-        self.overlap_input = None
         self.depth_list_aligned = []
         self.ref_align = []
 
@@ -118,37 +117,30 @@ class VideoDepthAnythingOnline(nn.Module):
         append_frame_len = 0
         if frame is None:
             # final
-            if self.overlap_input is not None:
-                append_frame_len = INFER_LEN - (len(self.cur_list) + self.overlap_input.shape[1])
+            if self.pre_input is not None:
+                append_frame_len = INFER_LEN - (len(self.cur_list) + OVERLAP)
             else:
                 append_frame_len = INFER_LEN - len(self.cur_list)
             if append_frame_len > 0:
                 if len(self.cur_list) > 0:
                     self.cur_list += [self.cur_list[-1].detach().clone()] * append_frame_len
                 else:
-                    self.cur_list = [self.overlap_input[:, -1:].detach().clone()] * append_frame_len
+                    self.cur_list = [self.pre_input[:, -1:].detach().clone()] * append_frame_len
         else:
             self.cur_list.append(frame.unsqueeze(0).unsqueeze(0))
-            if self.overlap_input is None:
+            if self.pre_input is None:
                 # INFER_LEN input, INFER_LEN output
                 if len(self.cur_list) < INFER_LEN:
                     return None
             else:
                 # (INFER_LEN - OVERLAP) input, INFER_LEN output
-                if self.overlap_input.shape[1] + len(self.cur_list) < INFER_LEN:
+                if OVERLAP + len(self.cur_list) < INFER_LEN:
                     return None
 
         cur_input = torch.cat(self.cur_list, dim=1).to(self.device)
         self.cur_list = []
-        if self.overlap_input is None:
-            assert self.pre_input is None
-            self.overlap_input = cur_input[:, -OVERLAP:].detach().clone()
-        else:
-            assert self.pre_input is not None
-            new_overlap_input = cur_input[:, -OVERLAP:].detach().clone()
-            cur_input = torch.cat((self.overlap_input, cur_input), dim=1)
-            self.overlap_input = new_overlap_input
-            cur_input[:, :OVERLAP, ...] = self.pre_input[:, KEYFRAMES, ...]
+        if self.pre_input is not None:
+            cur_input = torch.cat((self.pre_input, cur_input), dim=1)
 
         if cur_input.device.type == "cuda":
             with torch.no_grad(), torch.autocast(device_type=cur_input.device.type, enabled=use_amp):
@@ -160,10 +152,7 @@ class VideoDepthAnythingOnline(nn.Module):
         depth = depth.flatten(0, 1).unsqueeze(1)
         depth = depth.float()
         depth_list = [depth[i][0] for i in range(depth.shape[0])]
-        if self.pre_input is None:
-            self.pre_input = cur_input.detach()
-        else:
-            self.pre_input.copy_(cur_input.detach())
+        self.pre_input = cur_input[:, KEYFRAMES, ...].detach().clone()
 
         # gc.collect()
 
@@ -176,7 +165,9 @@ class VideoDepthAnythingOnline(nn.Module):
             self.depth_list_aligned += depth_list
             for kf_id in KF_ALIGN_LIST:
                 self.ref_align.append(depth_list[kf_id])
-            return None
+            depth_list = self.depth_list_aligned[0:-INTERP_LEN]
+            self.depth_list_aligned = self.depth_list_aligned[-INTERP_LEN:]
+            return depth_list
 
         curr_align = []
         for i in range(len(KF_ALIGN_LIST)):
